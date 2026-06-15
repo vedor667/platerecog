@@ -17,8 +17,8 @@
     h2 { font-size:1rem; margin:0 0 12px; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     label.lbl { display:block; font-size:.8rem; color:var(--muted); margin:0 0 4px; }
-    input { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
-    input#plate { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
+    input, select { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    select#plate { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
     .full { grid-column:1 / -1; }
     button { padding:13px; border:none; border-radius:10px; font-size:1rem; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; }
     button.secondary { background:#2a2e3c; color:var(--text); }
@@ -40,18 +40,18 @@
 <body>
   <nav class="nav">
     <a href="/">📷 Scan</a>
-    <a href="/lookup.html">🔎 Lookup</a>
+    <a href="/lookup.html">🔎 Live feed</a>
     <a href="/daily.html">📅 Daily</a>
     <a href="/manage.html" class="active">⚙️ Manage</a>
   </nav>
 
   <div class="card">
     <h2 id="formTitle">Add / update a plate owner</h2>
-    <p class="muted" style="margin:-6px 0 12px; font-size:.82rem">Plates are matched by their <b>last 4 digits</b> — you can enter the full plate or just the last 4 numbers.</p>
+    <p class="muted" style="margin:-6px 0 12px; font-size:.82rem">Pick a plate that has been scanned, then assign a name. Matching uses the <b>last 4 digits</b>. (✓ = already assigned)</p>
     <div class="grid">
       <div>
-        <label class="lbl" for="plate">Plate *</label>
-        <input id="plate" placeholder="e.g. 7896" autocomplete="off" />
+        <label class="lbl" for="plate">Plate * <span class="muted">(scanned plates)</span></label>
+        <select id="plate"><option value="">— choose a scanned plate —</option></select>
       </div>
       <div>
         <label class="lbl" for="idcode">ID</label>
@@ -83,9 +83,24 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    let all = [];
+    let all = [];                 // registry entries
+    const last4 = (p) => (p || "").replace(/\D/g, "").slice(-4);
 
     function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1500); }
+
+    // Build the Plate dropdown from plates that have actually been scanned.
+    async function populatePlates() {
+      let captures = [];
+      try { captures = await (await fetch("/api/captures")).json(); } catch {}
+      const assigned = new Set(all.map((r) => last4(r.plate)));
+      // distinct scanned plates, keep most-recent order
+      const seen = new Set(); const plates = [];
+      for (const c of captures) { const p = (c.plate||"").toUpperCase(); if (p && !seen.has(p)) { seen.add(p); plates.push(p); } }
+      const sel = $("plate"); const cur = sel.value;
+      sel.innerHTML = '<option value="">— choose a scanned plate —</option>' +
+        plates.map((p) => `<option value="${p}">${p}${assigned.has(last4(p)) ? "  ✓" : ""}</option>`).join("");
+      if (cur && plates.includes(cur)) sel.value = cur;
+    }
 
     function render() {
       const q = $("search").value.toLowerCase().trim();
@@ -107,11 +122,16 @@
     async function load() {
       try { all = await (await fetch("/api/registry")).json(); } catch { all = []; }
       render();
+      await populatePlates();
     }
 
     function edit(plate) {
       const r = all.find((x)=>x.plate===plate); if (!r) return;
-      $("plate").value=r.plate; $("name").value=r.name||""; $("idcode").value=r.idcode||""; $("note").value=r.note||"";
+      const sel = $("plate");
+      // ensure the registered plate is selectable even if it isn't in the scan list
+      if (![...sel.options].some((o)=>o.value===r.plate)) sel.insertAdjacentHTML("beforeend", `<option value="${r.plate}">${r.plate}</option>`);
+      sel.value = r.plate;
+      $("name").value=r.name||""; $("idcode").value=r.idcode||""; $("note").value=r.note||"";
       $("formTitle").textContent = "Edit " + r.plate;
       $("cancel").style.display="block";
       window.scrollTo({top:0,behavior:"smooth"});
