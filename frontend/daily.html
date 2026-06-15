@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plate Reader — Daily Log</title>
+  <style>
+    :root { --bg:#0f1117; --card:#1a1d28; --accent:#4f8cff; --text:#e6e8ee; --muted:#8b90a0; --good:#38d39f; --bad:#e05a5a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text);
+           display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:0 16px 24px; }
+    .nav { position:sticky; top:0; z-index:5; display:flex; gap:6px; width:100%; max-width:820px; padding:12px 0; background:var(--bg); }
+    .nav a { flex:1; text-align:center; padding:9px 4px; border-radius:10px; text-decoration:none;
+             background:#2a2e3c; color:var(--text); font-weight:600; font-size:.82rem; }
+    .nav a.active { background:var(--accent); color:#fff; }
+    .bar { display:flex; gap:10px; width:100%; max-width:820px; margin-bottom:12px; align-items:center; flex-wrap:wrap; }
+    .bar input, .bar select { padding:10px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    .bar input.search { flex:1; min-width:140px; }
+    .bar button { padding:10px 14px; border:none; border-radius:10px; font-weight:600; background:#2a2e3c; color:var(--text); cursor:pointer; }
+    .bar button.exp { background:var(--accent); color:#fff; }
+    .count { color:var(--muted); font-size:.85rem; width:100%; max-width:820px; margin-bottom:6px; }
+    .card { background:var(--card); border-radius:14px; padding:8px; width:100%; max-width:820px; overflow-x:auto; margin-bottom:14px; }
+    .dayhead { padding:12px 10px 6px; font-weight:700; color:var(--accent); font-size:.95rem; }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #2a2e3c; white-space:nowrap; }
+    th { color:var(--muted); font-weight:600; font-size:.8rem; }
+    td.plate { font-weight:700; letter-spacing:.5px; }
+    .yes { color:var(--good); } .no { color:var(--muted); }
+    .del { background:none; border:none; color:var(--bad); cursor:pointer; font-size:1rem; }
+    .empty { text-align:center; padding:30px; color:var(--muted); }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/">📷 Scan</a>
+    <a href="/lookup.html">🔎 Lookup</a>
+    <a href="/daily.html" class="active">📅 Daily</a>
+    <a href="/manage.html">⚙️ Manage</a>
+  </nav>
+
+  <div class="bar">
+    <select id="day"><option value="">All days</option></select>
+    <input class="search" id="search" placeholder="Search plate or owner…" autocomplete="off" />
+    <button id="refresh">↻</button>
+    <button class="exp" id="export">⬇ CSV</button>
+    <button id="clear">🗑 Clear all</button>
+  </div>
+  <div class="count" id="count"></div>
+
+  <div id="container"></div>
+  <div class="empty" id="empty" style="display:none">No captures. Start on the <a href="/" style="color:var(--accent)">Scan</a> page.</div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let all = [];
+    const dayKey = (ts) => { const d = new Date(ts); return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); };
+    const dayLabel = (k) => new Date(k + "T00:00:00").toLocaleDateString(undefined, { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+
+    function render() {
+      const q = $("search").value.toLowerCase().trim();
+      const selDay = $("day").value;
+      const list = all.filter((c) => {
+        if (selDay && dayKey(c.ts) !== selDay) return false;
+        if (!q) return true;
+        const owner = c.owner ? (c.owner.name + " " + c.owner.idcode) : "";
+        return (c.plate + " " + owner).toLowerCase().includes(q);
+      });
+      $("count").textContent = list.length + " capture" + (list.length === 1 ? "" : "s");
+      $("empty").style.display = list.length ? "none" : "block";
+
+      // group by day (list is newest-first already)
+      const groups = {};
+      for (const c of list) (groups[dayKey(c.ts)] ||= []).push(c);
+      const cont = $("container"); cont.innerHTML = "";
+      for (const k of Object.keys(groups)) {
+        const card = document.createElement("div"); card.className = "card";
+        const rows = groups[k].map((c) => {
+          const t = new Date(c.ts).toLocaleTimeString();
+          const o = c.owner;
+          const owner = o && o.name ? `<span class="yes">${o.name}</span>` : `<span class="no">— unmatched</span>`;
+          return `<tr>
+            <td class="no">${t}</td><td class="plate">${c.plate}</td>
+            <td>${owner}</td><td class="no">${o && o.idcode ? o.idcode : ""}</td>
+            <td class="no">${c.province || ""}</td><td class="no">${Math.round((c.confidence||0)*100)}%</td>
+            <td><button class="del" data-id="${c.id}">✕</button></td></tr>`;
+        }).join("");
+        card.innerHTML = `<div class="dayhead">${dayLabel(k)} · ${groups[k].length}</div>
+          <table><thead><tr><th>Time</th><th>Plate</th><th>Owner</th><th>ID</th><th>Province</th><th>Conf</th><th></th></tr></thead>
+          <tbody>${rows}</tbody></table>`;
+        cont.appendChild(card);
+      }
+      cont.querySelectorAll(".del").forEach((b) => b.onclick = () => del(b.dataset.id));
+    }
+
+    function fillDays() {
+      const days = [...new Set(all.map((c) => dayKey(c.ts)))];
+      const sel = $("day"); const cur = sel.value;
+      sel.innerHTML = '<option value="">All days</option>' + days.map((d) => `<option value="${d}">${dayLabel(d)}</option>`).join("");
+      if (days.includes(cur)) sel.value = cur;
+    }
+
+    async function load() {
+      try { all = await (await fetch("/api/captures")).json(); } catch { all = []; }
+      fillDays(); render();
+    }
+    async function del(id) { await fetch("/api/captures/" + id, { method: "DELETE" }); load(); }
+
+    function exportCsv() {
+      const q = $("search").value.toLowerCase().trim(); const selDay = $("day").value;
+      const list = all.filter((c) => (!selDay || dayKey(c.ts) === selDay));
+      const head = ["datetime","plate","owner","id","province","confidence"];
+      const lines = [head.join(",")].concat(list.map((c) => [
+        new Date(c.ts).toISOString(), c.plate, c.owner ? c.owner.name : "", c.owner ? c.owner.idcode : "",
+        c.province || "", Math.round((c.confidence||0)*100) + "%"
+      ].map((v) => `"${String(v).replace(/"/g,'""')}"`).join(",")));
+      const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = "plates-" + (selDay || "all") + ".csv"; a.click();
+    }
+
+    $("search").addEventListener("input", render);
+    $("day").addEventListener("change", render);
+    $("refresh").addEventListener("click", load);
+    $("export").addEventListener("click", exportCsv);
+    $("clear").addEventListener("click", async () => {
+      if (!confirm("Delete ALL captures? This cannot be undone.")) return;
+      await fetch("/api/captures/clear", { method: "POST" }); load();
+    });
+
+    load();
+  </script>
+</body>
+</html>

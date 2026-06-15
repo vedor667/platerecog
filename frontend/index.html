@@ -3,256 +3,227 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <title>Plate Reader — Capture</title>
+  <title>Plate Reader — Scan</title>
   <style>
-    :root { --bg:#0f1117; --card:#1a1d28; --accent:#4f8cff; --text:#e6e8ee; --muted:#8b90a0; --good:#38d39f; }
+    :root { --bg:#0f1117; --card:#1a1d28; --accent:#4f8cff; --text:#e6e8ee; --muted:#8b90a0; --good:#38d39f; --bad:#e05a5a; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text);
            display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:0 16px 24px; }
-    .nav { position:sticky; top:0; z-index:5; display:flex; gap:8px; width:100%; max-width:480px;
-           padding:12px 0; background:var(--bg); }
-    .nav a { flex:1; text-align:center; padding:10px; border-radius:10px; text-decoration:none;
-             background:#2a2e3c; color:var(--text); font-weight:600; font-size:.9rem; }
+    .nav { position:sticky; top:0; z-index:5; display:flex; gap:6px; width:100%; max-width:480px; padding:12px 0; background:var(--bg); }
+    .nav a { flex:1; text-align:center; padding:9px 4px; border-radius:10px; text-decoration:none;
+             background:#2a2e3c; color:var(--text); font-weight:600; font-size:.82rem; }
     .nav a.active { background:var(--accent); color:#fff; }
-    h1 { font-size:1.1rem; margin:4px 0 12px; }
     .card { background:var(--card); border-radius:14px; padding:14px; width:100%; max-width:480px; margin-bottom:14px; }
     .viewport { position:relative; line-height:0; }
-    video, canvas, img#preview { width:100%; border-radius:10px; background:#000; display:block; }
-    canvas { display:none; }
-    .bbox { position:absolute; border:3px solid var(--good); border-radius:4px; display:none;
-            box-shadow:0 0 0 2px rgba(0,0,0,.4); pointer-events:none; }
-    .bbox::after { content:attr(data-label); position:absolute; top:-22px; left:-3px;
-            background:var(--good); color:#04201a; font:600 11px/1 system-ui, sans-serif;
-            padding:3px 6px; border-radius:4px; white-space:nowrap; }
-    .row { display:flex; gap:10px; margin-top:12px; }
-    button { flex:1; padding:14px; border:none; border-radius:10px; font-size:1rem; font-weight:600;
-             background:var(--accent); color:#fff; cursor:pointer; }
-    button.secondary { background:#2a2e3c; color:var(--text); }
-    button:disabled { opacity:.5; }
-    label.lbl { display:block; font-size:.8rem; color:var(--muted); margin:4px 0; }
-    input.plateInput { width:100%; padding:12px; font-size:1.6rem; font-weight:700; letter-spacing:1px;
-             text-align:center; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117;
-             color:var(--text); text-transform:uppercase; }
-    .province { color:var(--accent); font-size:1.1rem; margin-top:6px; text-align:center; }
-    .muted { color:var(--muted); font-size:.85rem; }
-    .owner { margin-top:10px; padding:10px; border-radius:10px; background:#0f1117; font-size:.95rem; }
+    video { width:100%; border-radius:10px; background:#000; display:block; }
+    .scanline { position:absolute; left:0; right:0; height:2px; background:var(--good); box-shadow:0 0 8px var(--good);
+                top:0; display:none; animation:scan 2s linear infinite; }
+    @keyframes scan { 0%{top:4%} 50%{top:96%} 100%{top:4%} }
+    .bbox { position:absolute; border:3px solid var(--good); border-radius:4px; display:none; pointer-events:none; }
+    .row { display:flex; gap:10px; margin-top:12px; align-items:center; }
+    button { flex:1; padding:14px; border:none; border-radius:10px; font-size:1rem; font-weight:700; background:var(--accent); color:#fff; cursor:pointer; }
+    button.stop { background:var(--bad); }
+    button.secondary { background:#2a2e3c; color:var(--text); font-weight:600; }
+    select { padding:10px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    .statusbar { display:flex; justify-content:space-between; align-items:center; font-size:.85rem; margin-top:10px; color:var(--muted); }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#555; margin-right:6px; }
+    .dot.on { background:var(--good); box-shadow:0 0 6px var(--good); animation:pulse 1.2s infinite; }
+    @keyframes pulse { 50%{opacity:.4} }
+    .bigplate { font-size:2.2rem; font-weight:800; letter-spacing:1px; text-align:center; word-break:break-word; }
+    .bigplate.empty { color:var(--muted); font-size:1.1rem; font-weight:500; }
+    .owner { margin-top:8px; padding:10px; border-radius:10px; background:#0f1117; text-align:center; }
     .owner.match { border-left:3px solid var(--good); }
     .owner.nomatch { border-left:3px solid #e0a13a; color:var(--muted); }
-    .raw { font-family:monospace; font-size:.78rem; color:var(--muted); white-space:pre-wrap; margin-top:10px; }
-    .spinner { border:3px solid #2a2e3c; border-top-color:var(--accent); border-radius:50%;
-               width:24px; height:24px; animation:spin 1s linear infinite; margin:8px auto; }
-    @keyframes spin { to { transform:rotate(360deg); } }
-    .recent { font-size:.85rem; }
-    .recent .item { display:flex; justify-content:space-between; padding:6px 0; border-top:1px solid #2a2e3c; }
-    .recent .item b { letter-spacing:.5px; }
-    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--good);
-             color:#04201a; font-weight:700; padding:12px 18px; border-radius:10px; opacity:0;
-             transition:opacity .2s; pointer-events:none; z-index:20; }
-    .toast.show { opacity:1; }
+    .meta { text-align:center; color:var(--muted); font-size:.8rem; margin-top:6px; }
+    .toggle { display:flex; align-items:center; gap:6px; font-size:.8rem; color:var(--muted); }
+    .session { font-size:.85rem; }
+    .session .item { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-top:1px solid #2a2e3c; }
+    .session .item b { letter-spacing:.5px; }
+    .label { font-size:.75rem; color:var(--muted); }
   </style>
 </head>
 <body>
   <nav class="nav">
-    <a href="/" class="active">📸 Capture</a>
-    <a href="/log.html">📋 Log</a>
+    <a href="/" class="active">📷 Scan</a>
+    <a href="/lookup.html">🔎 Lookup</a>
+    <a href="/daily.html">📅 Daily</a>
     <a href="/manage.html">⚙️ Manage</a>
   </nav>
-
-  <h1>🚗 Capture a plate</h1>
 
   <div class="card">
     <div class="viewport">
       <video id="video" autoplay playsinline muted></video>
-      <img id="preview" style="display:none" />
+      <div class="scanline" id="scanline"></div>
       <div class="bbox" id="bbox"></div>
     </div>
-    <canvas id="canvas"></canvas>
     <div class="row">
-      <button id="capture">📸 Capture &amp; Read</button>
+      <button id="toggle">▶ Start scanning</button>
     </div>
     <div class="row">
-      <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" />
-      <button id="uploadBtn" class="secondary">🖼️ Pick a photo</button>
+      <span class="label">Every</span>
+      <select id="interval">
+        <option value="1000">1s</option>
+        <option value="2000" selected>2s</option>
+        <option value="4000">4s</option>
+        <option value="8000">8s</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="skipStatic" checked /> skip still frames (saves API cost)</label>
+    </div>
+    <div class="statusbar">
+      <span><span class="dot" id="dot"></span><span id="state">idle</span></span>
+      <span>API calls: <b id="calls">0</b> · logged: <b id="logged">0</b></span>
     </div>
   </div>
 
-  <div class="card result" id="resultCard" style="display:none">
-    <div id="loading" style="display:none"><div class="spinner"></div><p class="muted" style="text-align:center">Reading…</p></div>
-    <div id="output" style="display:none">
-      <label class="lbl" for="plateInput">Plate (edit if misread)</label>
-      <input id="plateInput" class="plateInput" autocomplete="off" />
-      <div class="province" id="province"></div>
-      <div class="muted" id="conf" style="text-align:center"></div>
-      <div class="owner" id="owner"></div>
-      <div class="raw" id="raw"></div>
-      <div class="row">
-        <button id="saveBtn">✓ Save to log</button>
-        <button id="retakeBtn" class="secondary">↺ Retake</button>
-      </div>
-    </div>
+  <div class="card">
+    <div class="bigplate empty" id="plate">— waiting —</div>
+    <div class="owner nomatch" id="owner" style="display:none"></div>
+    <div class="meta" id="meta"></div>
   </div>
 
-  <div class="card recent" id="recentCard" style="display:none">
+  <div class="card session">
     <div style="display:flex; justify-content:space-between; align-items:center">
-      <b>Recent captures</b><a href="/log.html" style="color:var(--accent); font-size:.85rem">View all →</a>
+      <b>This session</b><a href="/lookup.html" style="color:var(--accent); font-size:.85rem">Live lookup →</a>
     </div>
-    <div id="recentList"></div>
+    <div id="sessionList"><div class="meta" style="text-align:left">Nothing logged yet.</div></div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <canvas id="canvas" style="display:none"></canvas>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const video = $("video"), canvas = $("canvas"), preview = $("preview");
-    const captureBtn = $("capture"), retakeBtn = $("retakeBtn"), uploadBtn = $("uploadBtn"), fileInput = $("fileInput");
-    const resultCard = $("resultCard"), loading = $("loading"), output = $("output"), bbox = $("bbox");
-    const plateInput = $("plateInput"), saveBtn = $("saveBtn"), ownerEl = $("owner");
-
-    let stream = null, lastDetection = null, lastProvince = null, lastConfidence = 0;
-    let registry = [];
-
+    const video = $("video"), canvas = $("canvas"), bbox = $("bbox");
     const norm = (p) => (p || "").toUpperCase().replace(/\s+/g, "").trim();
+    const last4 = (p) => (p || "").replace(/\D/g, "").slice(-4);
+
+    let stream = null, scanning = false, timer = null;
+    let intervalMs = 2000, skipStatic = true;
+    let calls = 0, logged = 0;
+    let registry = [];
+    let prevGray = null;
+    const DIFF_THRESH = 7;
+
+    // small canvas for cheap motion/diff detection
+    const dc = document.createElement("canvas"); dc.width = 48; dc.height = 36;
+    const dctx = dc.getContext("2d", { willReadFrequently: true });
 
     async function loadRegistry() {
       try { registry = await (await fetch("/api/registry")).json(); } catch { registry = []; }
     }
     function findOwner(plate) {
-      const np = norm(plate);
-      return registry.find((r) => norm(r.plate) === np) || null;
-    }
-    function showOwner(plate) {
-      const o = findOwner(plate);
-      if (o) {
-        ownerEl.className = "owner match";
-        ownerEl.innerHTML = `<b>${o.name || "(no name)"}</b>` +
-          (o.idcode ? ` &middot; ID ${o.idcode}` : "") + (o.note ? `<br><span class="muted">${o.note}</span>` : "");
-      } else {
-        ownerEl.className = "owner nomatch";
-        ownerEl.innerHTML = "No owner match — add it on the <a href='/manage.html' style='color:var(--accent)'>Manage</a> page.";
-      }
-    }
-
-    function toast(msg) {
-      const t = $("toast"); t.textContent = msg; t.classList.add("show");
-      setTimeout(() => t.classList.remove("show"), 1600);
+      const k = last4(plate);
+      return k ? registry.find((r) => last4(r.plate) === k) || null : null;
     }
 
     async function startCamera() {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
-        video.srcObject = stream; video.style.display = "block"; preview.style.display = "none";
-      } catch (e) { video.style.display = "none"; }
-    }
-
-    function frameToBlob() {
-      return new Promise((resolve) => {
-        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-        canvas.getContext("2d").drawImage(video, 0, 0);
-        preview.src = canvas.toDataURL("image/jpeg", 0.9);
-        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9);
-      });
-    }
-
-    function drawBox() {
-      if (!lastDetection || preview.style.display === "none" || !preview.naturalWidth) { bbox.style.display = "none"; return; }
-      const [x1, y1, x2, y2] = lastDetection.box;
-      const sx = preview.clientWidth / preview.naturalWidth, sy = preview.clientHeight / preview.naturalHeight;
-      bbox.style.left = (x1*sx)+"px"; bbox.style.top = (y1*sy)+"px";
-      bbox.style.width = ((x2-x1)*sx)+"px"; bbox.style.height = ((y2-y1)*sy)+"px";
-      bbox.setAttribute("data-label", lastDetection.label); bbox.style.display = "block";
-    }
-    window.addEventListener("resize", drawBox);
-    preview.addEventListener("load", drawBox);
-
-    async function send(blob) {
-      resultCard.style.display = "block"; loading.style.display = "block"; output.style.display = "none";
-      bbox.style.display = "none"; lastDetection = null;
-      const fd = new FormData(); fd.append("file", blob, "frame.jpg");
-      try {
-        const res = await fetch("/recognize", { method: "POST", body: fd });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        showResult(await res.json());
+        video.srcObject = stream;
       } catch (e) {
-        loading.style.display = "none"; output.style.display = "block";
-        plateInput.value = ""; $("province").textContent = "";
-        $("conf").textContent = e.message + " — is the backend running?";
-        ownerEl.className = "owner nomatch"; ownerEl.textContent = "";
-        $("raw").textContent = "";
+        $("state").textContent = "no camera (HTTPS + permission needed)";
       }
     }
 
-    function showResult(data) {
-      loading.style.display = "none"; output.style.display = "block";
-      plateInput.value = (data.plate || "").toUpperCase();
-      lastProvince = data.province || null;
-      lastConfidence = data.confidence || 0;
-      $("province").textContent = data.province ? "Province: " + data.province : "";
-      $("conf").textContent = "confidence ~ " + Math.round((data.confidence || 0) * 100) + "%";
-      $("raw").textContent = (data.raw || []).map(r => `${r.text}  (${Math.round(r.confidence*100)}%)`).join("\n");
-      showOwner(plateInput.value);
-      const det = data.detection;
-      if (det && det.used && det.box) {
-        lastDetection = { box: det.box, label: "plate " + Math.round((det.box_confidence || 0) * 100) + "%" };
-        drawBox();
-      } else { lastDetection = null; bbox.style.display = "none"; }
-      plateInput.focus();
+    function smallGray() {
+      dctx.drawImage(video, 0, 0, 48, 36);
+      const d = dctx.getImageData(0, 0, 48, 36).data;
+      const g = new Uint8Array(48 * 36);
+      for (let i = 0, j = 0; i < d.length; i += 4, j++) g[j] = d[i] * 0.3 + d[i + 1] * 0.59 + d[i + 2] * 0.11;
+      return g;
+    }
+    function meanDiff(a, b) {
+      if (!a || !b) return 999;
+      let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]);
+      return s / a.length;
     }
 
-    function resumeCamera() {
-      bbox.style.display = "none"; lastDetection = null;
-      preview.style.display = "none"; resultCard.style.display = "none";
-      if (stream) video.style.display = "block";
+    function frameBlob() {
+      return new Promise((resolve) => {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85);
+      });
     }
 
-    plateInput.addEventListener("input", () => showOwner(plateInput.value));
+    function showRead(data, status) {
+      const plate = (data && data.plate) ? data.plate.toUpperCase() : null;
+      $("plate").textContent = plate || "— no plate —";
+      $("plate").className = "bigplate" + (plate ? "" : " empty");
+      const o = plate ? findOwner(plate) : null;
+      const ownerEl = $("owner");
+      if (plate && o) {
+        ownerEl.style.display = "block"; ownerEl.className = "owner match";
+        ownerEl.innerHTML = `<b>${o.name || "(no name)"}</b>` + (o.idcode ? ` &middot; ID ${o.idcode}` : "");
+      } else if (plate) {
+        ownerEl.style.display = "block"; ownerEl.className = "owner nomatch";
+        ownerEl.textContent = "no owner match";
+      } else { ownerEl.style.display = "none"; }
+      $("meta").textContent = status || (data ? "confidence ~ " + Math.round((data.confidence || 0) * 100) + "%" : "");
+    }
 
-    captureBtn.addEventListener("click", async () => {
-      if (!stream) { fileInput.click(); return; }
-      const blob = await frameToBlob();
-      video.style.display = "none"; preview.style.display = "block";
-      send(blob);
-    });
+    function addSession(rec) {
+      logged++; $("logged").textContent = logged;
+      const list = $("sessionList");
+      if (list.querySelector(".meta")) list.innerHTML = "";
+      const o = rec.owner && rec.owner.name ? rec.owner.name : "—";
+      const t = new Date(rec.ts).toLocaleTimeString();
+      const div = document.createElement("div");
+      div.className = "item";
+      div.innerHTML = `<b>${rec.plate}</b><span>${o}</span><span class="muted" style="color:var(--muted)">${t}</span>`;
+      list.prepend(div);
+    }
 
-    retakeBtn.addEventListener("click", resumeCamera);
-
-    saveBtn.addEventListener("click", async () => {
-      const plate = norm(plateInput.value);
-      if (!plate) { toast("Enter a plate first"); return; }
-      saveBtn.disabled = true;
+    async function scanOnce() {
+      calls++; $("calls").textContent = calls;
+      const blob = await frameBlob();
+      const fd = new FormData(); fd.append("file", blob, "frame.jpg");
       try {
-        const res = await fetch("/api/captures", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ plate, province: lastProvince, confidence: lastConfidence }),
-        });
-        if (!res.ok) throw new Error("HTTP " + res.status);
-        toast("Saved " + plate);
-        resumeCamera();
-        loadRecent();
-      } catch (e) { toast("Save failed"); }
-      finally { saveBtn.disabled = false; }
-    });
-
-    uploadBtn.addEventListener("click", () => fileInput.click());
-    fileInput.addEventListener("change", (e) => {
-      const f = e.target.files[0]; if (!f) return;
-      preview.src = URL.createObjectURL(f); preview.style.display = "block"; video.style.display = "none";
-      send(f);
-    });
-
-    async function loadRecent() {
-      try {
-        const list = await (await fetch("/api/captures")).json();
-        const recent = list.slice(0, 5);
-        $("recentCard").style.display = recent.length ? "block" : "none";
-        $("recentList").innerHTML = recent.map((c) => {
-          const t = new Date(c.ts).toLocaleString();
-          const who = c.owner && c.owner.name ? c.owner.name : "<span class='muted'>—</span>";
-          return `<div class="item"><b>${c.plate}</b><span>${who}</span><span class="muted">${t}</span></div>`;
-        }).join("");
-      } catch {}
+        const data = await (await fetch("/recognize", { method: "POST", body: fd })).json();
+        if (data && data.plate) {
+          showRead(data);
+          const res = await (await fetch("/api/captures", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ plate: data.plate, province: data.province, confidence: data.confidence }),
+          })).json();
+          if (res && !res.duplicate) addSession(res);
+          else if (res && res.duplicate) $("meta").textContent += "  · already logged recently";
+        } else {
+          showRead(null, "scanning…");
+        }
+      } catch (e) {
+        $("meta").textContent = "error: " + e.message;
+      }
     }
 
-    (async () => { await loadRegistry(); await loadRecent(); startCamera(); })();
+    async function tick() {
+      if (!scanning) return;
+      if (video.videoWidth) {
+        let send = true;
+        if (skipStatic) {
+          const g = smallGray(); const d = meanDiff(g, prevGray); prevGray = g;
+          if (d < DIFF_THRESH) { send = false; $("state").textContent = "scanning (still)"; }
+          else $("state").textContent = "scanning (motion)";
+        }
+        if (send) await scanOnce();
+      }
+      if (scanning) timer = setTimeout(tick, intervalMs);
+    }
+
+    function setScanning(on) {
+      scanning = on;
+      $("toggle").textContent = on ? "⏹ Stop scanning" : "▶ Start scanning";
+      $("toggle").className = on ? "stop" : "";
+      $("dot").className = "dot" + (on ? " on" : "");
+      $("scanline").style.display = on ? "block" : "none";
+      $("state").textContent = on ? "scanning…" : "idle";
+      if (on) { prevGray = null; tick(); } else { clearTimeout(timer); }
+    }
+
+    $("toggle").addEventListener("click", () => setScanning(!scanning));
+    $("interval").addEventListener("change", (e) => { intervalMs = Number(e.target.value); });
+    $("skipStatic").addEventListener("change", (e) => { skipStatic = e.target.checked; });
+
+    (async () => { await loadRegistry(); await startCamera(); })();
   </script>
 </body>
 </html>

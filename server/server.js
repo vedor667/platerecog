@@ -128,7 +128,14 @@ function normalize(data) {
 }
 
 // --- captures log ----------------------------------------------------------
-app.get("/api/captures", (_req, res) => res.json(store.listCaptures()));
+app.get("/api/captures", (req, res) => {
+  let list = store.listCaptures(); // newest first, owner-enriched
+  const since = Number(req.query.since);
+  if (since) list = list.filter((c) => c.ts > since);
+  const limit = Number(req.query.limit);
+  if (limit > 0) list = list.slice(0, limit);
+  res.json(list);
+});
 
 app.post("/api/captures", (req, res) => {
   const { plate, province, confidence } = req.body || {};

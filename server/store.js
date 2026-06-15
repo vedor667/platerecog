@@ -37,32 +37,59 @@ export function normPlate(p) {
   return (p || "").toString().toUpperCase().replace(/\s+/g, "").trim();
 }
 
+// Owners are matched on the LAST 4 DIGITS of the plate number. Duplicates on
+// the last 4 are rare, and this is robust to ANPR misreading the province
+// letters or leading characters. Configurable via MATCH_DIGITS (default 4).
+const MATCH_DIGITS = Number(process.env.MATCH_DIGITS) || 4;
+export function plateKey(p) {
+  const digits = (p || "").toString().replace(/\D/g, "");
+  return digits.slice(-MATCH_DIGITS);
+}
+
+// Don't re-log the same plate (by key) more than once within this window.
+const DEDUPE_MS = (Number(process.env.DEDUPE_SECONDS) || 60) * 1000;
+
 let seq = Date.now();
 const nextId = () => (seq++).toString(36);
 
 // --- captures --------------------------------------------------------------
 export function listCaptures() {
   const reg = readJson(REGISTRY);
-  const owners = new Map(reg.map((r) => [normPlate(r.plate), r]));
+  const owners = new Map();
+  for (const r of reg) {
+    const k = plateKey(r.plate);
+    if (k && !owners.has(k)) owners.set(k, r);
+  }
   return readJson(CAPTURES)
     .sort((a, b) => b.ts - a.ts)
     .map((c) => {
-      const o = owners.get(normPlate(c.plate));
+      const o = owners.get(plateKey(c.plate));
       return { ...c, owner: o ? { name: o.name, idcode: o.idcode, note: o.note } : null };
     });
 }
 export function addCapture({ plate, province, confidence }) {
   const list = readJson(CAPTURES);
+  const np = normPlate(plate);
+  const key = plateKey(np);
+  const now = Date.now();
+
+  // De-dupe: skip if the same key was logged very recently (camera sees the
+  // same car for several seconds during continuous scanning).
+  if (key) {
+    const recent = list.find((c) => plateKey(c.plate) === key && now - c.ts < DEDUPE_MS);
+    if (recent) return { duplicate: true, of: recent.id };
+  }
+
   const rec = {
     id: nextId(),
-    plate: normPlate(plate),
+    plate: np,
     province: province || null,
     confidence: Number(confidence) || 0,
-    ts: Date.now(),
+    ts: now,
   };
   list.push(rec);
   writeJson(CAPTURES, list);
-  const reg = readJson(REGISTRY).find((r) => normPlate(r.plate) === rec.plate);
+  const reg = readJson(REGISTRY).find((r) => plateKey(r.plate) === key);
   return { ...rec, owner: reg ? { name: reg.name, idcode: reg.idcode, note: reg.note } : null };
 }
 export function deleteCapture(id) {
