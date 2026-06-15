@@ -169,6 +169,24 @@ app.delete("/api/registry/:plate", (req, res) => {
   res.json({ ok: true });
 });
 
+// --- backups ---------------------------------------------------------------
+app.get("/api/backups", (_req, res) => res.json(store.listBackups()));
+app.post("/api/backups", (_req, res) => res.json(store.backupNow() || { error: "backup failed" }));
+app.post("/api/backups/restore", (req, res) => {
+  try {
+    res.json(store.restoreBackup((req.body || {}).file));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// Hourly snapshot of the data files (kept in server/data/backups/).
+store.backupNow();
+setInterval(() => {
+  const r = store.backupNow();
+  if (r) console.log(`backup ok — ${r.captures} captures, ${r.registry} owners (${r.kept} snapshots kept)`);
+}, 60 * 60 * 1000);
+
 app.listen(PORT, () => {
   console.log(`Thai LPR server listening on http://0.0.0.0:${PORT}`);
   if (!TOKEN) console.warn("⚠  PLATE_API_TOKEN not set — /recognize will return 500 until you add it.");

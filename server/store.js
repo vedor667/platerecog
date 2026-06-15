@@ -16,6 +16,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
 const CAPTURES = path.join(DATA_DIR, "captures.json");
 const REGISTRY = path.join(DATA_DIR, "registry.json");
+const BACKUP_DIR = path.join(DATA_DIR, "backups");
+const KEEP_BACKUPS = Number(process.env.KEEP_BACKUPS) || 336; // hourly ≈ 14 days
 
 function ensure() {
   if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -128,4 +130,38 @@ export function upsertRegistry({ plate, actual, name, idcode, note }) {
 export function deleteRegistry(plate) {
   const np = normPlate(plate);
   writeJson(REGISTRY, readJson(REGISTRY).filter((r) => normPlate(r.plate) !== np));
+}
+
+// --- backups ---------------------------------------------------------------
+// One timestamped snapshot file holds both captures + registry, so a restore
+// is atomic. Old snapshots are pruned to KEEP_BACKUPS.
+export function backupNow() {
+  try {
+    if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const snapshot = { ts: d.getTime(), captures: readJson(CAPTURES), registry: readJson(REGISTRY) };
+    writeJson(path.join(BACKUP_DIR, `backup-${stamp}.json`), snapshot);
+    const files = fs.readdirSync(BACKUP_DIR).filter((f) => f.startsWith("backup-") && f.endsWith(".json")).sort();
+    while (files.length > KEEP_BACKUPS) {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, files.shift())); } catch {}
+    }
+    return { captures: snapshot.captures.length, registry: snapshot.registry.length, kept: files.length };
+  } catch (e) {
+    console.error("backup failed:", e.message);
+    return null;
+  }
+}
+export function listBackups() {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR).filter((f) => f.startsWith("backup-")).sort().reverse();
+}
+export function restoreBackup(name) {
+  const file = path.join(BACKUP_DIR, path.basename(name)); // basename blocks path traversal
+  if (!fs.existsSync(file)) throw new Error("backup not found");
+  const snap = readJson(file);
+  if (Array.isArray(snap.captures)) writeJson(CAPTURES, snap.captures);
+  if (Array.isArray(snap.registry)) writeJson(REGISTRY, snap.registry);
+  return { captures: (snap.captures || []).length, registry: (snap.registry || []).length };
 }
