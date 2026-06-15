@@ -18,7 +18,8 @@
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     label.lbl { display:block; font-size:.8rem; color:var(--muted); margin:0 0 4px; }
     input, select { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
-    select#plate { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
+    select#plate, input#actual { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
+    td.actual { font-weight:700; letter-spacing:.5px; color:var(--good); }
     .full { grid-column:1 / -1; }
     button { padding:13px; border:none; border-radius:10px; font-size:1rem; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; }
     button.secondary { background:#2a2e3c; color:var(--text); }
@@ -47,21 +48,25 @@
 
   <div class="card">
     <h2 id="formTitle">Add / update a plate owner</h2>
-    <p class="muted" style="margin:-6px 0 12px; font-size:.82rem">Pick a plate that has been scanned, then assign a name. Matching uses the <b>last 4 digits</b>. (✓ = already assigned)</p>
+    <p class="muted" style="margin:-6px 0 12px; font-size:.82rem">Pick a <b>detected</b> plate from the scans, type the <b>actual</b> (real) plate, and assign an owner. The system then reconciles future scans to the real plate. (✓ = already assigned)</p>
     <div class="grid">
       <div>
-        <label class="lbl" for="plate">Plate * <span class="muted">(scanned plates)</span></label>
+        <label class="lbl" for="plate">Detected plate * <span class="muted">(from scans)</span></label>
         <select id="plate"><option value="">— choose a scanned plate —</option></select>
       </div>
       <div>
-        <label class="lbl" for="idcode">ID</label>
-        <input id="idcode" placeholder="e.g. sir133" autocomplete="off" />
+        <label class="lbl" for="actual">Actual plate</label>
+        <input id="actual" placeholder="real plate, e.g. 7896" autocomplete="off" />
       </div>
       <div class="full">
         <label class="lbl" for="name">Owner name</label>
         <input id="name" placeholder="e.g. Mr. Wasal Ausmarn" autocomplete="off" />
       </div>
-      <div class="full">
+      <div>
+        <label class="lbl" for="idcode">ID</label>
+        <input id="idcode" placeholder="e.g. sir133" autocomplete="off" />
+      </div>
+      <div>
         <label class="lbl" for="note">Note (optional)</label>
         <input id="note" placeholder="anything useful" autocomplete="off" />
       </div>
@@ -73,7 +78,7 @@
   <div class="card">
     <div class="bar"><input id="search" placeholder="Search…" autocomplete="off" /></div>
     <table>
-      <thead><tr><th>Plate</th><th>Owner</th><th>ID</th><th>Note</th><th></th></tr></thead>
+      <thead><tr><th>Detected</th><th>Actual</th><th>Owner</th><th>ID</th><th>Note</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <div class="empty" id="empty" style="display:none">No owners yet. Add one above.</div>
@@ -108,6 +113,7 @@
       $("empty").style.display = list.length ? "none" : "block";
       $("rows").innerHTML = list.map((r) => `<tr>
         <td class="plate">${r.plate}</td>
+        <td class="actual">${r.actual || "<span class='muted'>—</span>"}</td>
         <td>${r.name || "<span class='muted'>—</span>"}</td>
         <td class="muted">${r.idcode || ""}</td>
         <td class="muted">${r.note || ""}</td>
@@ -131,13 +137,13 @@
       // ensure the registered plate is selectable even if it isn't in the scan list
       if (![...sel.options].some((o)=>o.value===r.plate)) sel.insertAdjacentHTML("beforeend", `<option value="${r.plate}">${r.plate}</option>`);
       sel.value = r.plate;
-      $("name").value=r.name||""; $("idcode").value=r.idcode||""; $("note").value=r.note||"";
+      $("actual").value=r.actual||""; $("name").value=r.name||""; $("idcode").value=r.idcode||""; $("note").value=r.note||"";
       $("formTitle").textContent = "Edit " + r.plate;
       $("cancel").style.display="block";
       window.scrollTo({top:0,behavior:"smooth"});
     }
     function resetForm() {
-      $("plate").value=$("name").value=$("idcode").value=$("note").value="";
+      $("plate").value=$("actual").value=$("name").value=$("idcode").value=$("note").value="";
       $("formTitle").textContent="Add / update a plate owner"; $("cancel").style.display="none";
     }
 
@@ -150,7 +156,7 @@
     $("save").addEventListener("click", async () => {
       const plate = $("plate").value.trim();
       if (!plate) { toast("Plate is required"); return; }
-      const body = { plate, name:$("name").value.trim(), idcode:$("idcode").value.trim(), note:$("note").value.trim() };
+      const body = { plate, actual:$("actual").value.trim(), name:$("name").value.trim(), idcode:$("idcode").value.trim(), note:$("note").value.trim() };
       const res = await fetch("/api/registry", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
       if (res.ok) { toast("Saved"); resetForm(); load(); } else { toast("Save failed"); }
     });

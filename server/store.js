@@ -52,20 +52,33 @@ const DEDUPE_MS = (Number(process.env.DEDUPE_SECONDS) || 60) * 1000;
 let seq = Date.now();
 const nextId = () => (seq++).toString(36);
 
+// Reconcile a DETECTED plate to a registry entry, in priority order:
+//   1. exact match on the detected plate alias (handles consistent misreads)
+//   2. last-4 digits of the ACTUAL (real) plate the operator entered
+//   3. last-4 digits of the detected plate
+function findEntry(reg, detected) {
+  const nd = normPlate(detected);
+  const kd = plateKey(nd);
+  let e = reg.find((r) => normPlate(r.plate) === nd);
+  if (e) return e;
+  if (kd) {
+    e = reg.find((r) => r.actual && plateKey(r.actual) === kd);
+    if (e) return e;
+    e = reg.find((r) => plateKey(r.plate) === kd);
+    if (e) return e;
+  }
+  return null;
+}
+function ownerFrom(e) {
+  return e ? { name: e.name, idcode: e.idcode, note: e.note, actual: e.actual || "" } : null;
+}
+
 // --- captures --------------------------------------------------------------
 export function listCaptures() {
   const reg = readJson(REGISTRY);
-  const owners = new Map();
-  for (const r of reg) {
-    const k = plateKey(r.plate);
-    if (k && !owners.has(k)) owners.set(k, r);
-  }
   return readJson(CAPTURES)
     .sort((a, b) => b.ts - a.ts)
-    .map((c) => {
-      const o = owners.get(plateKey(c.plate));
-      return { ...c, owner: o ? { name: o.name, idcode: o.idcode, note: o.note } : null };
-    });
+    .map((c) => ({ ...c, owner: ownerFrom(findEntry(reg, c.plate)) }));
 }
 export function addCapture({ plate, province, confidence }) {
   const list = readJson(CAPTURES);
@@ -89,8 +102,7 @@ export function addCapture({ plate, province, confidence }) {
   };
   list.push(rec);
   writeJson(CAPTURES, list);
-  const reg = readJson(REGISTRY).find((r) => plateKey(r.plate) === key);
-  return { ...rec, owner: reg ? { name: reg.name, idcode: reg.idcode, note: reg.note } : null };
+  return { ...rec, owner: ownerFrom(findEntry(readJson(REGISTRY), np)) };
 }
 export function deleteCapture(id) {
   writeJson(CAPTURES, readJson(CAPTURES).filter((c) => c.id !== id));
@@ -103,11 +115,11 @@ export function clearCaptures() {
 export function listRegistry() {
   return readJson(REGISTRY).sort((a, b) => normPlate(a.plate).localeCompare(normPlate(b.plate)));
 }
-export function upsertRegistry({ plate, name, idcode, note }) {
+export function upsertRegistry({ plate, actual, name, idcode, note }) {
   const np = normPlate(plate);
   if (!np) throw new Error("plate is required");
   const list = readJson(REGISTRY);
-  const rec = { plate: np, name: name || "", idcode: idcode || "", note: note || "" };
+  const rec = { plate: np, actual: normPlate(actual) || "", name: name || "", idcode: idcode || "", note: note || "" };
   const i = list.findIndex((r) => normPlate(r.plate) === np);
   if (i >= 0) list[i] = rec; else list.push(rec);
   writeJson(REGISTRY, list);

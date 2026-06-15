@@ -111,8 +111,13 @@
       try { registry = await (await fetch("/api/registry")).json(); } catch { registry = []; }
     }
     function findOwner(plate) {
-      const k = last4(plate);
-      return k ? registry.find((r) => last4(r.plate) === k) || null : null;
+      const nd = norm(plate), k = last4(plate);
+      let e = registry.find((r) => norm(r.plate) === nd); if (e) return e;
+      if (k) {
+        e = registry.find((r) => last4(r.actual) === k); if (e) return e;
+        e = registry.find((r) => last4(r.plate) === k); if (e) return e;
+      }
+      return null;
     }
 
     async function startCamera() {
@@ -153,7 +158,8 @@
       const ownerEl = $("owner");
       if (plate && o) {
         ownerEl.style.display = "block"; ownerEl.className = "owner match";
-        ownerEl.innerHTML = `<b>${o.name || "(no name)"}</b>` + (o.idcode ? ` &middot; ID ${o.idcode}` : "");
+        const act = o.actual && last4(o.actual) !== last4(plate) ? ` &middot; plate ${o.actual}` : "";
+        ownerEl.innerHTML = `<b>${o.name || "(no name)"}</b>` + (o.idcode ? ` &middot; ID ${o.idcode}` : "") + act;
       } else if (plate) {
         ownerEl.style.display = "block"; ownerEl.className = "owner nomatch";
         ownerEl.textContent = "no owner match";

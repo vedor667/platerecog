@@ -23,6 +23,7 @@
     th, td { text-align:left; padding:12px 10px; border-bottom:1px solid #2a2e3c; white-space:nowrap; }
     th { color:var(--muted); font-weight:600; font-size:.8rem; }
     td.plate { font-weight:800; letter-spacing:.5px; font-size:1.15rem; }
+    .reconciled { font-size:.8rem; font-weight:700; color:var(--good); letter-spacing:.5px; }
     .yes { color:var(--good); font-weight:600; } .no { color:var(--muted); }
     .empty { text-align:center; padding:40px; color:var(--muted); }
     @keyframes flash { from { background:rgba(56,211,159,.25); } to { background:transparent; } }
@@ -56,12 +57,15 @@
     let maxTs = 0;
     let total = 0;
 
+    const nostrip = (s) => (s || "").replace(/\s/g, "").toUpperCase();
     function rowHtml(c, isNew) {
       const t = new Date(c.ts).toLocaleTimeString();
       const o = c.owner;
       const owner = o && o.name ? `<span class="yes">${o.name}</span>` : `<span class="no">— unmatched</span>`;
       const idc = o && o.idcode ? o.idcode : "";
-      return `<tr class="${isNew ? "new" : ""}"><td>${t}</td><td class="plate">${c.plate}</td><td>${owner}</td><td class="no">${idc}</td></tr>`;
+      const actual = o && o.actual && nostrip(o.actual) !== nostrip(c.plate)
+        ? `<div class="reconciled">→ ${o.actual}</div>` : "";
+      return `<tr class="${isNew ? "new" : ""}"><td>${t}</td><td class="plate">${c.plate}${actual}</td><td>${owner}</td><td class="no">${idc}</td></tr>`;
     }
 
     async function poll() {
