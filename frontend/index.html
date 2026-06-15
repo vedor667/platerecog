@@ -24,7 +24,8 @@
     button { flex:1; padding:14px; border:none; border-radius:10px; font-size:1rem; font-weight:700; background:var(--accent); color:#fff; cursor:pointer; }
     button.stop { background:var(--bad); }
     button.secondary { background:#2a2e3c; color:var(--text); font-weight:600; }
-    select { padding:10px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    select { padding:10px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); font-size:16px; }
+    .row { flex-wrap:wrap; }
     .statusbar { display:flex; justify-content:space-between; align-items:center; font-size:.85rem; margin-top:10px; color:var(--muted); }
     .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#555; margin-right:6px; }
     .dot.on { background:var(--good); box-shadow:0 0 6px var(--good); animation:pulse 1.2s infinite; }
@@ -40,6 +41,12 @@
     .session .item { display:flex; justify-content:space-between; gap:8px; padding:6px 0; border-top:1px solid #2a2e3c; }
     .session .item b { letter-spacing:.5px; }
     .label { font-size:.75rem; color:var(--muted); }
+    @media (max-width: 520px) {
+      .nav { gap:5px; }
+      .nav a { font-size:.74rem; padding:9px 2px; }
+      h1 { font-size:1rem; }
+      .bigplate { font-size:1.9rem; }
+    }
   </style>
 </head>
 <body>

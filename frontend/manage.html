@@ -13,11 +13,11 @@
     .nav a { flex:1; text-align:center; padding:10px; border-radius:10px; text-decoration:none;
              background:#2a2e3c; color:var(--text); font-weight:600; font-size:.9rem; }
     .nav a.active { background:var(--accent); color:#fff; }
-    .card { background:var(--card); border-radius:14px; padding:14px; width:100%; max-width:760px; margin-bottom:14px; }
+    .card { background:var(--card); border-radius:14px; padding:14px; width:100%; max-width:760px; margin-bottom:14px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
     h2 { font-size:1rem; margin:0 0 12px; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
     label.lbl { display:block; font-size:.8rem; color:var(--muted); margin:0 0 4px; }
-    input, select { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    input, select { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); font-size:16px; }
     select#plate, input#actual { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
     td.actual { font-weight:700; letter-spacing:.5px; color:var(--good); }
     .full { grid-column:1 / -1; }
@@ -36,6 +36,12 @@
     .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--good);
              color:#04201a; font-weight:700; padding:12px 18px; border-radius:10px; opacity:0; transition:opacity .2s; pointer-events:none; }
     .toast.show { opacity:1; }
+    @media (max-width: 520px) {
+      .grid { grid-template-columns:1fr; }
+      .nav { gap:5px; }
+      .nav a { font-size:.74rem; padding:9px 2px; }
+      th, td { padding:8px 6px; font-size:.85rem; }
+    }
   </style>
 </head>
 <body>

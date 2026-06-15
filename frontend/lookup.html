@@ -18,7 +18,7 @@
     .dot { width:10px; height:10px; border-radius:50%; background:var(--good); box-shadow:0 0 6px var(--good); animation:pulse 1.2s infinite; }
     @keyframes pulse { 50%{opacity:.35} }
     .count { color:var(--muted); font-size:.85rem; margin-left:auto; }
-    .card { background:var(--card); border-radius:14px; padding:8px; width:100%; max-width:820px; overflow-x:auto; }
+    .card { background:var(--card); border-radius:14px; padding:8px; width:100%; max-width:820px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
     table { width:100%; border-collapse:collapse; font-size:1rem; }
     th, td { text-align:left; padding:12px 10px; border-bottom:1px solid #2a2e3c; white-space:nowrap; }
     th { color:var(--muted); font-weight:600; font-size:.8rem; }
@@ -28,6 +28,12 @@
     .empty { text-align:center; padding:40px; color:var(--muted); }
     @keyframes flash { from { background:rgba(56,211,159,.25); } to { background:transparent; } }
     tr.new { animation:flash 2s ease-out; }
+    @media (max-width: 520px) {
+      .nav { gap:5px; }
+      .nav a { font-size:.74rem; padding:9px 2px; }
+      th, td { padding:10px 8px; }
+      td.plate { font-size:1.05rem; }
+    }
   </style>
 </head>
 <body>
