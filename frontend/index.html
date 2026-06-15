@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>Thai Plate Reader</title>
+  <style>
+    :root { --bg:#0f1117; --card:#1a1d28; --accent:#4f8cff; --text:#e6e8ee; --muted:#8b90a0; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text);
+           display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:16px; }
+    h1 { font-size:1.2rem; margin:8px 0 16px; }
+    .card { background:var(--card); border-radius:14px; padding:14px; width:100%; max-width:480px; margin-bottom:14px; }
+    .viewport { position:relative; line-height:0; }
+    video, canvas, img#preview { width:100%; border-radius:10px; background:#000; display:block; }
+    canvas { display:none; }
+    .bbox { position:absolute; border:3px solid #38d39f; border-radius:4px; display:none;
+            box-shadow:0 0 0 2px rgba(0,0,0,.4); pointer-events:none; }
+    .bbox::after { content:attr(data-label); position:absolute; top:-22px; left:-3px;
+            background:#38d39f; color:#04201a; font:600 11px/1 system-ui, sans-serif;
+            padding:3px 6px; border-radius:4px; white-space:nowrap; }
+    .row { display:flex; gap:10px; margin-top:12px; }
+    button { flex:1; padding:14px; border:none; border-radius:10px; font-size:1rem; font-weight:600;
+             background:var(--accent); color:#fff; cursor:pointer; }
+    button.secondary { background:#2a2e3c; color:var(--text); }
+    button:disabled { opacity:.5; }
+    .result { font-size:1rem; }
+    .plate { font-size:2rem; font-weight:700; letter-spacing:1px; word-break:break-word; }
+    .province { color:var(--accent); font-size:1.2rem; margin-top:4px; }
+    .muted { color:var(--muted); font-size:.85rem; }
+    .raw { font-family:monospace; font-size:.8rem; color:var(--muted); white-space:pre-wrap; margin-top:10px; }
+    .spinner { border:3px solid #2a2e3c; border-top-color:var(--accent); border-radius:50%;
+               width:24px; height:24px; animation:spin 1s linear infinite; margin:8px auto; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>🚗 Thai License Plate Reader</h1>
+
+  <div class="card">
+    <div class="viewport">
+      <video id="video" autoplay playsinline muted></video>
+      <img id="preview" style="display:none" />
+      <div class="bbox" id="bbox"></div>
+    </div>
+    <canvas id="canvas"></canvas>
+    <div class="row">
+      <button id="capture">📸 Capture &amp; Read</button>
+      <button id="retake" class="secondary" style="display:none">↺ Retake</button>
+    </div>
+    <div class="row">
+      <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none" />
+      <button id="uploadBtn" class="secondary">🖼️ Pick a photo</button>
+    </div>
+  </div>
+
+  <div class="card result" id="resultCard" style="display:none">
+    <div id="loading" style="display:none"><div class="spinner"></div><p class="muted" style="text-align:center">Reading…</p></div>
+    <div id="output" style="display:none">
+      <div class="plate" id="plate">—</div>
+      <div class="province" id="province"></div>
+      <div class="muted" id="conf"></div>
+      <div class="raw" id="raw"></div>
+    </div>
+  </div>
+
+  <p class="muted">Backend: <code id="apiUrlLabel"></code></p>
+
+  <script>
+    // The Node server serves this page AND the API, so default to same-origin.
+    // Override for split hosting via: localStorage.setItem("lpr_api", "https://api.example.com")
+    const API_BASE = localStorage.getItem("lpr_api") || "";
+    const API_URL = API_BASE + "/recognize";
+    document.getElementById("apiUrlLabel").textContent = API_URL || "(same origin) /recognize";
+
+    const video = document.getElementById("video");
+    const canvas = document.getElementById("canvas");
+    const preview = document.getElementById("preview");
+    const captureBtn = document.getElementById("capture");
+    const retakeBtn = document.getElementById("retake");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const fileInput = document.getElementById("fileInput");
+    const resultCard = document.getElementById("resultCard");
+    const loading = document.getElementById("loading");
+    const output = document.getElementById("output");
+    const bbox = document.getElementById("bbox");
+
+    let stream = null;
+    let lastDetection = null;  // {box:[x1,y1,x2,y2], label} in source-image pixels
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } }, audio: false
+        });
+        video.srcObject = stream;
+        video.style.display = "block";
+        preview.style.display = "none";
+      } catch (e) {
+        console.warn("Camera unavailable:", e);
+        video.style.display = "none";
+        // Camera not available (e.g. desktop, or http on phone) — fall back to file picker.
+      }
+    }
+
+    function frameToBlob() {
+      return new Promise((resolve) => {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext("2d").drawImage(video, 0, 0);
+        preview.src = canvas.toDataURL("image/jpeg", 0.9);
+        canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9);
+      });
+    }
+
+    // Position the detection box over the preview, scaling from the source
+    // image's pixel coords to the on-screen displayed size.
+    function drawBox() {
+      if (!lastDetection || preview.style.display === "none" || !preview.naturalWidth) {
+        bbox.style.display = "none";
+        return;
+      }
+      const [x1, y1, x2, y2] = lastDetection.box;
+      const sx = preview.clientWidth / preview.naturalWidth;
+      const sy = preview.clientHeight / preview.naturalHeight;
+      bbox.style.left = (x1 * sx) + "px";
+      bbox.style.top = (y1 * sy) + "px";
+      bbox.style.width = ((x2 - x1) * sx) + "px";
+      bbox.style.height = ((y2 - y1) * sy) + "px";
+      bbox.setAttribute("data-label", lastDetection.label);
+      bbox.style.display = "block";
+    }
+    window.addEventListener("resize", drawBox);
+    preview.addEventListener("load", drawBox);  // recompute once natural size is known
+
+    async function send(blob) {
+      resultCard.style.display = "block";
+      loading.style.display = "block";
+      output.style.display = "none";
+      bbox.style.display = "none";
+      lastDetection = null;
+      const fd = new FormData();
+      fd.append("file", blob, "frame.jpg");
+      try {
+        const res = await fetch(API_URL, { method: "POST", body: fd });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const data = await res.json();
+        showResult(data);
+      } catch (e) {
+        loading.style.display = "none";
+        output.style.display = "block";
+        document.getElementById("plate").textContent = "⚠️ Error";
+        document.getElementById("province").textContent = "";
+        document.getElementById("conf").textContent = e.message + " — is the backend running?";
+        document.getElementById("raw").textContent = "";
+      }
+    }
+
+    function showResult(data) {
+      loading.style.display = "none";
+      output.style.display = "block";
+      document.getElementById("plate").textContent = data.plate || "(no plate read)";
+      document.getElementById("province").textContent = data.province || "";
+      document.getElementById("conf").textContent =
+        "confidence ~ " + Math.round((data.confidence || 0) * 100) + "%";
+      document.getElementById("raw").textContent =
+        (data.raw || []).map(r => `${r.text}  (${Math.round(r.confidence*100)}%)`).join("\n");
+
+      // Overlay the YOLO detection box if the backend used one.
+      const det = data.detection;
+      if (det && det.used && det.box) {
+        lastDetection = { box: det.box, label: "plate " + Math.round((det.box_confidence || 0) * 100) + "%" };
+        drawBox();
+      } else {
+        lastDetection = null;
+        bbox.style.display = "none";
+      }
+    }
+
+    captureBtn.addEventListener("click", async () => {
+      if (!stream) { fileInput.click(); return; }
+      const blob = await frameToBlob();
+      video.style.display = "none";
+      preview.style.display = "block";
+      captureBtn.style.display = "none";
+      retakeBtn.style.display = "block";
+      send(blob);
+    });
+
+    retakeBtn.addEventListener("click", () => {
+      bbox.style.display = "none";
+      lastDetection = null;
+      preview.style.display = "none";
+      video.style.display = "block";
+      captureBtn.style.display = "block";
+      retakeBtn.style.display = "none";
+      resultCard.style.display = "none";
+    });
+
+    uploadBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", (e) => {
+      const f = e.target.files[0];
+      if (!f) return;
+      preview.src = URL.createObjectURL(f);
+      preview.style.display = "block";
+      video.style.display = "none";
+      send(f);
+    });
+
+    startCamera();
+  </script>
+</body>
+</html>

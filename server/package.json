@@ -1,0 +1,18 @@
+{
+  "name": "thai-lpr-server",
+  "version": "0.1.0",
+  "description": "Node backend that serves the frontend and proxies images to an ANPR API.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

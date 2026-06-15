@@ -1,0 +1,19 @@
+# Secrets
+.env
+**/.env
+
+# Node
+node_modules/
+server/node_modules/
+
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+
+# Models / weights (large, download separately)
+*.pt
+
+# OS
+Thumbs.db
+.DS_Store
