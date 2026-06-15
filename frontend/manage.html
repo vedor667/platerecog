@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Plate Reader — Manage</title>
+  <style>
+    :root { --bg:#0f1117; --card:#1a1d28; --accent:#4f8cff; --text:#e6e8ee; --muted:#8b90a0; --good:#38d39f; --bad:#e05a5a; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--text);
+           display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:0 16px 24px; }
+    .nav { position:sticky; top:0; z-index:5; display:flex; gap:8px; width:100%; max-width:760px; padding:12px 0; background:var(--bg); }
+    .nav a { flex:1; text-align:center; padding:10px; border-radius:10px; text-decoration:none;
+             background:#2a2e3c; color:var(--text); font-weight:600; font-size:.9rem; }
+    .nav a.active { background:var(--accent); color:#fff; }
+    .card { background:var(--card); border-radius:14px; padding:14px; width:100%; max-width:760px; margin-bottom:14px; }
+    h2 { font-size:1rem; margin:0 0 12px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    label.lbl { display:block; font-size:.8rem; color:var(--muted); margin:0 0 4px; }
+    input { width:100%; padding:11px; border-radius:10px; border:2px solid #2a2e3c; background:#0f1117; color:var(--text); }
+    input#plate { text-transform:uppercase; font-weight:700; letter-spacing:.5px; }
+    .full { grid-column:1 / -1; }
+    button { padding:13px; border:none; border-radius:10px; font-size:1rem; font-weight:600; background:var(--accent); color:#fff; cursor:pointer; }
+    button.secondary { background:#2a2e3c; color:var(--text); }
+    table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    th, td { text-align:left; padding:10px 8px; border-bottom:1px solid #2a2e3c; }
+    th { color:var(--muted); font-weight:600; font-size:.8rem; }
+    td.plate { font-weight:700; letter-spacing:.5px; }
+    .act { background:none; border:none; cursor:pointer; font-size:1rem; padding:2px 6px; }
+    .act.edit { color:var(--accent); } .act.del { color:var(--bad); }
+    .muted { color:var(--muted); }
+    .empty { text-align:center; padding:20px; color:var(--muted); }
+    .bar { display:flex; gap:10px; margin-bottom:10px; }
+    .bar input { flex:1; }
+    .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--good);
+             color:#04201a; font-weight:700; padding:12px 18px; border-radius:10px; opacity:0; transition:opacity .2s; pointer-events:none; }
+    .toast.show { opacity:1; }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/">📸 Capture</a>
+    <a href="/log.html">📋 Log</a>
+    <a href="/manage.html" class="active">⚙️ Manage</a>
+  </nav>
+
+  <div class="card">
+    <h2 id="formTitle">Add / update a plate owner</h2>
+    <div class="grid">
+      <div>
+        <label class="lbl" for="plate">Plate *</label>
+        <input id="plate" placeholder="e.g. 7896" autocomplete="off" />
+      </div>
+      <div>
+        <label class="lbl" for="idcode">ID</label>
+        <input id="idcode" placeholder="e.g. sir133" autocomplete="off" />
+      </div>
+      <div class="full">
+        <label class="lbl" for="name">Owner name</label>
+        <input id="name" placeholder="e.g. Mr. Wasal Ausmarn" autocomplete="off" />
+      </div>
+      <div class="full">
+        <label class="lbl" for="note">Note (optional)</label>
+        <input id="note" placeholder="anything useful" autocomplete="off" />
+      </div>
+      <button id="save" class="full">💾 Save</button>
+      <button id="cancel" class="secondary full" style="display:none">Cancel edit</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="bar"><input id="search" placeholder="Search…" autocomplete="off" /></div>
+    <table>
+      <thead><tr><th>Plate</th><th>Owner</th><th>ID</th><th>Note</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="empty" id="empty" style="display:none">No owners yet. Add one above.</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    let all = [];
+
+    function toast(m){ const t=$("toast"); t.textContent=m; t.classList.add("show"); setTimeout(()=>t.classList.remove("show"),1500); }
+
+    function render() {
+      const q = $("search").value.toLowerCase().trim();
+      const list = all.filter((r) => !q || (r.plate+" "+r.name+" "+r.idcode+" "+r.note).toLowerCase().includes(q));
+      $("empty").style.display = list.length ? "none" : "block";
+      $("rows").innerHTML = list.map((r) => `<tr>
+        <td class="plate">${r.plate}</td>
+        <td>${r.name || "<span class='muted'>—</span>"}</td>
+        <td class="muted">${r.idcode || ""}</td>
+        <td class="muted">${r.note || ""}</td>
+        <td style="white-space:nowrap">
+          <button class="act edit" data-p="${r.plate}">✎</button>
+          <button class="act del" data-p="${r.plate}">✕</button>
+        </td></tr>`).join("");
+      document.querySelectorAll(".act.edit").forEach((b)=> b.onclick=()=>edit(b.dataset.p));
+      document.querySelectorAll(".act.del").forEach((b)=> b.onclick=()=>del(b.dataset.p));
+    }
+
+    async function load() {
+      try { all = await (await fetch("/api/registry")).json(); } catch { all = []; }
+      render();
+    }
+
+    function edit(plate) {
+      const r = all.find((x)=>x.plate===plate); if (!r) return;
+      $("plate").value=r.plate; $("name").value=r.name||""; $("idcode").value=r.idcode||""; $("note").value=r.note||"";
+      $("formTitle").textContent = "Edit " + r.plate;
+      $("cancel").style.display="block";
+      window.scrollTo({top:0,behavior:"smooth"});
+    }
+    function resetForm() {
+      $("plate").value=$("name").value=$("idcode").value=$("note").value="";
+      $("formTitle").textContent="Add / update a plate owner"; $("cancel").style.display="none";
+    }
+
+    async function del(plate) {
+      if (!confirm("Delete owner mapping for " + plate + "?")) return;
+      await fetch("/api/registry/" + encodeURIComponent(plate), { method: "DELETE" });
+      toast("Deleted " + plate); load();
+    }
+
+    $("save").addEventListener("click", async () => {
+      const plate = $("plate").value.trim();
+      if (!plate) { toast("Plate is required"); return; }
+      const body = { plate, name:$("name").value.trim(), idcode:$("idcode").value.trim(), note:$("note").value.trim() };
+      const res = await fetch("/api/registry", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+      if (res.ok) { toast("Saved"); resetForm(); load(); } else { toast("Save failed"); }
+    });
+    $("cancel").addEventListener("click", resetForm);
+    $("search").addEventListener("input", render);
+
+    load();
+  </script>
+</body>
+</html>

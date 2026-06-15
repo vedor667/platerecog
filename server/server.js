@@ -19,6 +19,7 @@ import multer from "multer";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as store from "./store.js";
 
 dotenv.config();
 
@@ -34,6 +35,8 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }, // 8 MB cap
 });
+
+app.use(express.json({ limit: "1mb" }));
 
 // --- serve the frontend ----------------------------------------------------
 app.use(express.static(path.join(__dirname, "..", "frontend")));
@@ -123,6 +126,41 @@ function normalize(data) {
     raw: (best.candidates || []).map((c) => ({ text: c.plate, confidence: c.score })),
   };
 }
+
+// --- captures log ----------------------------------------------------------
+app.get("/api/captures", (_req, res) => res.json(store.listCaptures()));
+
+app.post("/api/captures", (req, res) => {
+  const { plate, province, confidence } = req.body || {};
+  if (!plate || !plate.trim()) return res.status(400).json({ error: "plate is required" });
+  res.json(store.addCapture({ plate, province, confidence }));
+});
+
+app.delete("/api/captures/:id", (req, res) => {
+  store.deleteCapture(req.params.id);
+  res.json({ ok: true });
+});
+
+app.post("/api/captures/clear", (_req, res) => {
+  store.clearCaptures();
+  res.json({ ok: true });
+});
+
+// --- registry (plate -> owner) ---------------------------------------------
+app.get("/api/registry", (_req, res) => res.json(store.listRegistry()));
+
+app.post("/api/registry", (req, res) => {
+  try {
+    res.json(store.upsertRegistry(req.body || {}));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.delete("/api/registry/:plate", (req, res) => {
+  store.deleteRegistry(req.params.plate);
+  res.json({ ok: true });
+});
 
 app.listen(PORT, () => {
   console.log(`Thai LPR server listening on http://0.0.0.0:${PORT}`);

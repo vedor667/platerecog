@@ -1,10 +1,14 @@
 # Secrets
 .env
 **/.env
+.deploy/
 
 # Node
 node_modules/
 server/node_modules/
+
+# Runtime data (captures + registry live only on the server)
+server/data/
 
 # Python
 backend/.venv/
